@@ -63,6 +63,17 @@ impl FromStr for DataLine {
     }
 }
 
+impl From<u8> for DataLine {
+    fn from(value: u8) -> Self {
+        Self {
+            length_valid: false,
+            length: 0,
+            data_valid: true,
+            data: value,
+        }
+    }
+}
+
 impl Display for DataLine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -167,14 +178,15 @@ fn main() {
                 .read(true)
                 .open(args.filename)
                 .expect("Failed to open source file");
+            let source = BufReader::new(source);
             let mut dest = OpenOptions::new()
                 .write(true)
                 .create(true)
                 .append(true)
                 .open(dest_file)
                 .expect("Failed to open destination file");
-            let source = BufReader::new(source);
-            let sl: Vec<DataLine> = source
+
+            let source_lines: Vec<DataLine> = source
                 .lines()
                 .map(|l| l.expect("Failed to read line"))
                 .map(|line| {
@@ -184,23 +196,17 @@ fn main() {
                         data_valid: false,
                         data: 0,
                     })
-                    .chain(line.bytes().map(|character| -> DataLine {
-                        DataLine {
-                            length_valid: false,
-                            length: 0,
-                            data_valid: true,
-                            data: character,
-                        }
-                    }))
+                    .chain(line.bytes().map(|character| DataLine::from(character)))
                     .collect::<Vec<_>>() // This could be avoided maybe. I'm .... rusty
                 })
                 .flatten()
                 .collect();
-            for line in &sl {
+
+            for line in &source_lines {
                 dest.write_fmt(format_args!("{line}\n"))
                     .expect("failed to write to file");
             }
-            println!("Wrote {} lines", sl.len());
+            println!("Wrote {} lines", source_lines.len());
         }
         Mode::Decode { dest_file } => {
             let file = OpenOptions::new()
